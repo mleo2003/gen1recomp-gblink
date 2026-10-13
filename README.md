@@ -69,10 +69,12 @@ The protocol tests run on a simulated clock. A fake trade server
 (`tests/fake_relay.lua`) adds latency and jitter, and `tests/fake_peer.lua`
 models the far player's client and Game Boy.
 
-`tests/e2e/` is a live test: Pokémon Red in BGB trades with this game over the
-real server, and both saves are then checked with PKHeX. It passed both ways
-(trade evolutions, OT/ID, DVs, stat exp, moves, nickname, catch-rate byte),
-in the real game window as well as headless. See `tests/e2e/README.md`.
+`tests/e2e/` is a live test: a real cartridge in BGB trades with this game
+over the real server, and both saves are then checked with PKHeX. It has
+passed both ways against Red (in the real game window and headless), Blue,
+Yellow, and Gold through the Time Capsule (trade evolutions, OT/ID, DVs,
+stat exp, moves, nickname, catch-rate byte, and the Time Capsule's held item
+<-> catch rate conversion). See `tests/e2e/README.md`.
 
 Releases are automatic: bump `version` in `manifest.json` (and
 `CHANGELOG.md`) and push to `main`. `.github/workflows/release.yml` packs
@@ -82,7 +84,7 @@ Releases are automatic: bump `version` in `manifest.json` (and
 
 | Piece | Where | Reference |
 |---|---|---|
-| WebSocket client (ws:// over luasocket) | `lib/ws.lua` | RFC 6455 |
+| WebSocket client (ws:// over luasocket, wss:// over the engine's TLS dialer) | `lib/ws.lua` | RFC 6455 |
 | `S`/`G` framing, SNG1 windows | `lib/proto.lua` | `high_level_listener.py`, `gsc_trading.py` |
 | The trade protocol, one side | `lib/session.lua` | `gsc_trading.py` `player_trade` / `do_trade` |
 | Party ↔ the cart's 0x1A2-byte block and patch list | `lib/codec.lua` | pokered `engine/link/cable_club.asm` |
@@ -106,13 +108,18 @@ then translates `party`/`pick`/`confirm`/`bye` to and from the messages above.
 
 ## Limits
 
-- **ws:// only.** LÖVE ships luasocket without TLS. The public server answers
-  plain `ws://` on port 80, and that is the default `SERVER`.
+- **wss:// only where the game has TLS.** LÖVE's luasocket has no TLS. The
+  engine adds a TLS dialer on official Windows builds and on Android, and the
+  mod uses it for a `wss://` `SERVER`. Elsewhere (macOS, Linux, handhelds) use
+  `ws://`. The public server answers both, and the default `SERVER` is plain
+  `ws://` so it works everywhere.
 - **Latency.** The protocol aborts a trade if a byte is 0.8 s late. That is
   comfortable up to roughly 300 ms each way and fails past about 350 ms. This
   limit belongs to the protocol and applies to any two clients.
-- **Gen 1 only.** Gold/Silver/Crystal players in the Time Capsule join the
-  same Gen 1 rooms, but this mod has not been tested against them.
+- **Gen 1 games only.** The mod runs in gen1recomp's Red, Blue and Yellow.
+  Gold/Silver/Crystal *cartridges* trade with it through their Time Capsule
+  (tested: Gold in BGB). gen1recomp's own Gold/Silver/Crystal mode has no
+  Cable Club yet, so the mod does not load there.
 - **No battles.** The Colosseum uses a different room type and is not offered.
 - **FireRed/LeafGreen.** A GBA cannot link-trade with Red/Blue. On
   pokemon.gblink.io, Gen 3 trading runs Lorenzooone's *Pokemon-Gen3-to-Gen-X*

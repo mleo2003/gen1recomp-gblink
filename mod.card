@@ -13,10 +13,10 @@ return {
     added = {
       "GB-LINK ONLINE: five-digit rooms on the Pokemon GB online trade server",
       "sync and buffered trades with pokemon.gblink.io and PokemonGB Online Trades 4.x",
-      "mod option: SERVER (a ws:// address; default the public server)",
+      "mod option: SERVER (a ws:// or wss:// address; default the public server)",
     },
     known = {
-      "ws:// only: this build has no TLS library, so wss:// servers are refused",
+      "wss:// needs the engine's TLS dialer (official Windows builds, Android); elsewhere use ws://",
       "the protocol gives up on a byte after 0.8 s, so links slower than ~350 ms each way can abort",
       "Gen 1 only: Gold/Silver/Crystal (Time Capsule) peers use the same rooms but are untested",
       "battles (the Colosseum) are not offered",

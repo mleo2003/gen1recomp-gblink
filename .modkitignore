@@ -18,3 +18,4 @@ tests/gblink_test.lua
 tests/ingame_test.lua
 tests/online_trade_test.lua
 tests/ws_test.lua
+tests/e2e/gen_saves_gsc.lua

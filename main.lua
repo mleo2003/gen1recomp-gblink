@@ -6,7 +6,8 @@
 -- Trades client both use.  Both players type the same five-digit room; the
 -- trade itself runs on the engine's own Trade Center screen.
 --
---   lib/ws.lua       WebSocket client over luasocket (ws:// only)
+--   lib/ws.lua       WebSocket client: ws:// over luasocket, wss:// over the
+--                    engine's TLS dialer where the game has one
 --   lib/proto.lua    S/G framing, SNG1 windows, the message table
 --   lib/session.lua  the online trade protocol, one side of it
 --   lib/codec.lua    party <-> the cart's 0x1A2-byte block and patch list
@@ -157,7 +158,13 @@ return function(mod)
     local room = CodeEntry.text(self.code)
     pcall(mod.storage.write, mod.storage, self.game, "room", { room = room })
     local server = tostring(mod.options:get("server") or DEFAULT_SERVER):gsub("/+$", "")
-    local ws = Ws.new(server .. "/link1/" .. room, { socket = socket, now = now,
+    -- wss:// needs the engine's TLS dialer (official Windows builds, Android)
+    local tls = Ws.tlsFrom(love.system)
+    if server:match("^wss://") and not tls then
+      self:message(Strings("This build of the game\ncan't use wss://.\nSet SERVER to ws://."))
+      return
+    end
+    local ws = Ws.new(server .. "/link1/" .. room, { socket = socket, tls = tls, now = now,
                                                      random = love.math.random })
     local session = Session.new({ conn = ws, Proto = Proto, now = now,
                                   rng = love.math.random, log = log })

@@ -1,10 +1,14 @@
--- A small non-blocking WebSocket client (RFC 6455) over luasocket.
+-- A small non-blocking WebSocket client (RFC 6455).
 --
--- Only what the trade server needs: ws:// (no TLS -- LÖVE ships luasocket
--- without luasec, and the server answers plain ws:// on port 80 the same as
--- wss://), client frames masked, server frames unmasked, fragmented messages
--- reassembled, pings answered.  Never blocks: update() is called once per
--- frame and moves whatever the socket will take or give right now.
+-- Only what the trade server needs: client frames masked, server frames
+-- unmasked, fragmented messages reassembled, pings answered.  Never blocks:
+-- update() is called once per frame and moves whatever the connection will
+-- take or give right now.
+--
+-- ws:// rides luasocket.  wss:// needs TLS, which LÖVE's luasocket lacks; it
+-- rides the engine's TLS dialer instead when the game has one (love.system's
+-- tlsOpen/tlsStatus/tlsSend/tlsReceive/tlsError/tlsClose: official Windows
+-- builds via gen1tls, and Android), passed in as opts.tls.
 --
 --   local ws = Ws.new("ws://host/link1/12345", { socket = require("socket") })
 --   ws:update()            -- every frame
@@ -55,7 +59,25 @@ function Ws.parseUrl(url)
   return { scheme = scheme, host = host, port = port, path = path }
 end
 
--- opts.socket: luasocket; opts.now: clock; opts.random(lo, hi)
+-- the engine's TLS dialer (src/net/Gen1Tls.lua, native/tls_dial), or nil
+function Ws.tlsFrom(system)
+  if type(system) ~= "table" then return nil end
+  local t = {
+    open = system.tlsOpen, status = system.tlsStatus, send = system.tlsSend,
+    receive = system.tlsReceive, error = system.tlsError, close = system.tlsClose,
+  }
+  for _, k in ipairs({ "open", "status", "send", "receive", "close" }) do
+    if type(t[k]) ~= "function" then return nil end
+  end
+  return t
+end
+
+-- TLS status codes (native/tls_dial/TlsDialer.cs)
+local TLS_CONNECTING, TLS_OPEN = 0, 1
+local TLS_CONNECT_TIMEOUT = 20
+
+-- opts.socket: luasocket; opts.tls: Ws.tlsFrom(love.system) for wss://;
+-- opts.now: clock; opts.random(lo, hi)
 function Ws.new(url, opts)
   opts = opts or {}
   local self = setmetatable({
@@ -76,10 +98,21 @@ function Ws.new(url, opts)
   }, Ws)
   local u, why = Ws.parseUrl(url)
   if not u then return self:fail(why) end
-  if u.scheme == "wss" then
-    return self:fail("wss:// needs TLS, which this build has no library for; use ws://")
-  end
   self.target = u
+  if u.scheme == "wss" then
+    self.tls = opts.tls
+    if not self.tls then
+      return self:fail("wss:// needs TLS, which this build of the game doesn't have; use ws://")
+    end
+    local ok, handle = pcall(self.tls.open, u.host, u.port)
+    if not ok or type(handle) ~= "number" or handle < 0 then
+      return self:fail(("can't reach %s:%d over TLS"):format(u.host, u.port))
+    end
+    self.tlsHandle = handle
+    self.connecting = true
+    self.deadline = self.now() + TLS_CONNECT_TIMEOUT
+    return self
+  end
   if not self.socket then return self:fail("no luasocket (needs the network permission)") end
   local tcp = self.socket.tcp()
   tcp:settimeout(0)
@@ -101,16 +134,26 @@ function Ws:fail(why)
   self.closed = true
   self.open = false
   if self.tcp then pcall(self.tcp.close, self.tcp) end
+  if self.tlsHandle then
+    pcall(self.tls.close, self.tlsHandle)
+    self.tlsHandle = nil
+  end
   return self
+end
+
+function Ws:tlsError()
+  local ok, err = pcall(self.tls.error or function() end, self.tlsHandle)
+  return ok and err or nil
 end
 
 function Ws:startHandshake()
   self.connecting = false
-  pcall(self.tcp.setoption, self.tcp, "tcp-nodelay", true)
+  if self.tcp then pcall(self.tcp.setoption, self.tcp, "tcp-nodelay", true) end
   local key = {}
   for i = 1, 16 do key[i] = string.char(self.random(0, 255)) end
   local u = self.target
-  local hostHeader = u.port == 80 and u.host or (u.host .. ":" .. u.port)
+  local defaultPort = u.scheme == "wss" and 443 or 80
+  local hostHeader = u.port == defaultPort and u.host or (u.host .. ":" .. u.port)
   self.tx = self.tx .. table.concat({
     "GET " .. u.path .. " HTTP/1.1",
     "Host: " .. hostHeader,
@@ -252,7 +295,18 @@ end
 -- ------------------------------------------------------------------
 
 function Ws:flush()
-  if #self.tx == 0 or not self.tcp then return end
+  if #self.tx == 0 then return end
+  if self.tlsHandle then
+    -- the dialer queues whatever it is given until its stream is ready
+    local ok, n = pcall(self.tls.send, self.tlsHandle, self.tx)
+    if ok and type(n) == "number" and n >= 0 then
+      self.tx = self.tx:sub(n + 1)
+    else
+      self:fail("send failed: " .. tostring(self:tlsError() or n))
+    end
+    return
+  end
+  if not self.tcp then return end
   local sent, err, last = self.tcp:send(self.tx)
   if sent then
     self.tx = ""
@@ -264,6 +318,21 @@ function Ws:flush()
 end
 
 function Ws:pollConnect()
+  if self.tlsHandle then
+    local ok, status = pcall(self.tls.status, self.tlsHandle)
+    if ok and status == TLS_OPEN then
+      self:startHandshake()
+      return true
+    elseif not ok or status ~= TLS_CONNECTING then
+      self:fail(("can't reach %s over TLS (%s)"):format(self.target.host,
+        tostring(self:tlsError() or "closed")))
+      return false
+    end
+    if self.now() > self.deadline then
+      self:fail(("can't reach %s over TLS (timed out)"):format(self.target.host))
+    end
+    return false
+  end
   local ok, _, writable = pcall(self.socket.select, nil, { self.tcp }, 0)
   if ok and writable and #writable > 0 then
     local cok, err = self.tcp:connect(self.target.host, self.target.port)
@@ -288,6 +357,16 @@ function Ws:update()
   if self.connecting and not self:pollConnect() then return end
   self:flush()
   if self.closed then return end
+  if self.tlsHandle then
+    self:receiveTls()
+    if self.closed then return end
+    self:parseIncoming()
+    if self.handshaking and self.now() > self.deadline then
+      self:fail("the server did not answer the WebSocket upgrade")
+    end
+    self:flush()
+    return
+  end
   local budget = RX_BUDGET
   while budget > 0 do
     local data, err, partial = self.tcp:receive(8192)
@@ -314,6 +393,28 @@ function Ws:update()
     self:fail("the server did not answer the WebSocket upgrade")
   end
   self:flush()
+end
+
+function Ws:receiveTls()
+  local budget = RX_BUDGET
+  while budget > 0 do
+    local ok, chunk = pcall(self.tls.receive, self.tlsHandle, 65536)
+    if not ok or type(chunk) ~= "string" or #chunk == 0 then break end
+    self.rx = self.rx .. chunk
+    budget = budget - #chunk
+  end
+  local ok, status = pcall(self.tls.status, self.tlsHandle)
+  if not ok or status ~= TLS_OPEN then
+    -- whatever arrived before the hang-up still counts
+    self:parseIncoming()
+    local why
+    if not self.open then
+      why = "the server closed the connection"
+      local err = self:tlsError()
+      if err then why = why .. " (" .. tostring(err) .. ")" end
+    end
+    self:fail(why)
+  end
 end
 
 function Ws:parseIncoming()

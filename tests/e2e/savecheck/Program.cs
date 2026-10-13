@@ -1,4 +1,6 @@
-// savecheck: read Gen 1 cartridge saves with PKHeX.Core and check a trade.
+// savecheck: read Gen 1/Gen 2 cartridge saves with PKHeX.Core and check a trade.
+// A Gen 1 <-> Gen 2 trade (the Time Capsule) is checked against PKHeX's own
+// conversion (PK1.ConvertToPK2 / PK2.ConvertToPK1): held item <-> catch rate.
 //
 //   savecheck show <file.sav>...                 trainer, party, boxes, legality
 //   savecheck trade <mine_before.sav> <mine_after.sav> <theirs_before.sav>
@@ -27,29 +29,29 @@ static class Program
         return 2;
     }
 
-    static SAV1 Load(string path)
+    static SaveFile Load(string path)
     {
         // PKHeX's own detection, the same as opening the file in PKHeX
-        if (!SaveUtil.TryGetSaveFile(path, out var file) || file is not SAV1 sav)
-            throw new InvalidDataException($"{path}: PKHeX does not recognize this as a Gen 1 save");
+        if (!SaveUtil.TryGetSaveFile(path, out var sav) || sav is not (SAV1 or SAV2))
+            throw new InvalidDataException($"{path}: PKHeX does not recognize this as a Gen 1 or Gen 2 save");
         if (!sav.ChecksumsValid) Fail($"{path}: checksums are not valid");
         return sav;
     }
 
-    static List<PK1> Party(SAV1 sav)
+    static List<GBPKM> Party(SaveFile sav)
     {
-        var list = new List<PK1>();
-        for (int i = 0; i < sav.PartyCount; i++) list.Add((PK1)sav.GetPartySlotAtIndex(i));
+        var list = new List<GBPKM>();
+        for (int i = 0; i < sav.PartyCount; i++) list.Add((GBPKM)sav.GetPartySlotAtIndex(i));
         return list;
     }
 
-    static List<(int box, int slot, PK1 pk)> Boxed(SAV1 sav)
+    static List<(int box, int slot, GBPKM pk)> Boxed(SaveFile sav)
     {
-        var list = new List<(int, int, PK1)>();
+        var list = new List<(int, int, GBPKM)>();
         for (int b = 0; b < sav.BoxCount; b++)
             for (int s = 0; s < sav.BoxSlotCount; s++)
             {
-                var pk = (PK1)sav.GetBoxSlotAtIndex(b, s);
+                var pk = (GBPKM)sav.GetBoxSlotAtIndex(b, s);
                 if (pk.Species != 0) list.Add((b + 1, s + 1, pk));
             }
         return list;
@@ -60,7 +62,7 @@ static class Program
 
     // Gen 1 DVs, unpacked from the cartridge's two bytes: attack, defense,
     // speed, special, and HP from their low bits.
-    static string Dvs(PK1 pk)
+    static string Dvs(GBPKM pk)
     {
         int d = pk.DV16;
         int atk = (d >> 12) & 15, def = (d >> 8) & 15, spe = (d >> 4) & 15, spc = d & 15;
@@ -68,9 +70,9 @@ static class Program
         return $"{hp}/{atk}/{def}/{spe}/{spc}";
     }
 
-    static string StatExp(PK1 pk) => $"{pk.EV_HP}/{pk.EV_ATK}/{pk.EV_DEF}/{pk.EV_SPE}/{pk.EV_SPC}";
+    static string StatExp(GBPKM pk) => $"{pk.EV_HP}/{pk.EV_ATK}/{pk.EV_DEF}/{pk.EV_SPE}/{pk.EV_SPC}";
 
-    static string Moves(PK1 pk)
+    static string Moves(GBPKM pk)
     {
         var parts = new List<string>();
         ushort[] moves = [pk.Move1, pk.Move2, pk.Move3, pk.Move4];
@@ -79,26 +81,37 @@ static class Program
         return string.Join(", ", parts);
     }
 
-    static string Legality(PK1 pk)
+    static string Legality(GBPKM pk)
     {
         var la = new LegalityAnalysis(pk);
         return la.Valid ? "legal" : "NOT LEGAL: " + la.Report().Replace(Environment.NewLine, " | ");
     }
 
-    static string Describe(PK1 pk)
+    // Gen 1 keeps a catch-rate byte where Gen 2 keeps the held item
+    static string ItemOrCatch(GBPKM pk) => pk is PK1 p1 ? $"catch {p1.CatchRate}" : $"item 0x{pk.HeldItem:X2}";
+
+    // what the Time Capsule should turn src into on the other generation
+    static GBPKM ConvertFor(GBPKM src, GBPKM target) => (src, target) switch
+    {
+        (PK1 a, PK2) => a.ConvertToPK2(),
+        (PK2 b, PK1) => b.ConvertToPK1(),
+        _ => src,
+    };
+
+    static string Describe(GBPKM pk)
     {
         var nick = pk.IsNicknamed ? $" \"{pk.Nickname}\"" : "";
         return $"{Name(pk.Species)}{nick} L{pk.CurrentLevel}  OT {pk.OriginalTrainerName}/{pk.TID16:D5}"
-             + $"  DVs {Dvs(pk)}  statexp {StatExp(pk)}  exp {pk.EXP}  catch {pk.CatchRate}"
+             + $"  DVs {Dvs(pk)}  statexp {StatExp(pk)}  exp {pk.EXP}  {ItemOrCatch(pk)}"
              + $"\n        HP {pk.Stat_HPCurrent}/{pk.Stat_HPMax} atk {pk.Stat_ATK} def {pk.Stat_DEF}"
-             + $" spe {pk.Stat_SPE} spc {pk.Stat_SPC}  moves {Moves(pk)}  [{Legality(pk)}]";
+             + $" spe {pk.Stat_SPE} {(pk is PK1 ? $"spc {pk.Stat_SPA}" : $"spa {pk.Stat_SPA} spd {pk.Stat_SPD}")}  moves {Moves(pk)}  [{Legality(pk)}]";
     }
 
     static void Show(string path)
     {
         var sav = Load(path);
         Console.WriteLine($"== {path}");
-        Console.WriteLine($"   trainer {sav.OT}/{sav.TID16:D5}  checksums {(sav.ChecksumsValid ? "ok" : "BAD")}  money {sav.Money}");
+        Console.WriteLine($"   {sav.GetType().Name} trainer {sav.OT}/{sav.TID16:D5}  checksums {(sav.ChecksumsValid ? "ok" : "BAD")}  money {sav.Money}");
         var party = Party(sav);
         Console.WriteLine($"   party ({party.Count})");
         for (int i = 0; i < party.Count; i++) Console.WriteLine($"     {i + 1}. {Describe(party[i])}");
@@ -109,7 +122,7 @@ static class Program
 
     // What makes one mon the same mon across a trade: trainer, DVs, EXP and
     // stat exp do not change when it changes hands or evolves.
-    static string Key(PK1 pk) => $"{pk.OriginalTrainerName}|{pk.TID16}|{pk.DV16}|{pk.EXP}|{StatExp(pk)}";
+    static string Key(GBPKM pk) => $"{pk.OriginalTrainerName}|{pk.TID16}|{pk.DV16}|{pk.EXP}|{StatExp(pk)}";
 
     static readonly Dictionary<string, string> TradeEvolutions = new()
     {
@@ -164,7 +177,15 @@ static class Program
             Check(Moves(got) == Moves(src), $"moves kept ({Moves(got)})");
             Check(got.IsNicknamed == src.IsNicknamed && (!src.IsNicknamed || got.Nickname == src.Nickname),
                   src.IsNicknamed ? $"nickname \"{got.Nickname}\" kept" : "no nickname, as sent");
-            Check(got.CatchRate == src.CatchRate, $"catch-rate byte {got.CatchRate} kept");
+            var expected = ConvertFor(src, got);
+            if (got is PK1 g1)
+                Check(g1.CatchRate == ((PK1)expected).CatchRate,
+                      src is PK1 ? $"catch-rate byte {g1.CatchRate} kept"
+                                 : $"held item 0x{src.HeldItem:X2} became catch-rate byte {g1.CatchRate} (PKHeX expects {((PK1)expected).CatchRate})");
+            else
+                Check(got.HeldItem == expected.HeldItem,
+                      src is PK2 ? $"held item 0x{got.HeldItem:X2} kept"
+                                 : $"catch-rate byte {((PK1)src).CatchRate} became held item 0x{got.HeldItem:X2} (PKHeX expects 0x{expected.HeldItem:X2})");
             Check(got.Stat_HPCurrent <= got.Stat_HPMax && got.Stat_HPCurrent > 0, $"HP {got.Stat_HPCurrent}/{got.Stat_HPMax}");
             var la = new LegalityAnalysis(got);
             Check(la.Valid, "PKHeX legality: " + (la.Valid ? "legal" : la.Report().Replace(Environment.NewLine, " | ")));

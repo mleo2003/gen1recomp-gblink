@@ -11,12 +11,15 @@
 -- the gen1recomp side (recomp_before.sav) so both sides can be checked with
 -- the same PKHeX tool.
 --
--- Run from the engine root, with the imported Red cache:
---   POKEPORT_DATA_DIR=<red data/generated> luajit <mod>/tests/e2e/gen_saves.lua <out dir>
+-- Run from the engine root, with that game's imported cache:
+--   POKEPORT_DATA_DIR=<cache>/data/generated luajit <mod>/tests/e2e/gen_saves.lua <out dir> [red|blue|yellow]
+-- The files are named after the game (emu_<game>.sav, recomp_<game>_slot1.lua, ...).
 package.path = "./?.lua;./?/init.lua;" .. package.path
 love = love or require("tests.love_stub")
 
-local out = assert(arg[1], "usage: gen_saves.lua <out dir>")
+local out = assert(arg[1], "usage: gen_saves.lua <out dir> [red|blue|yellow]")
+local game = arg[2] or "red"
+assert(game == "red" or game == "blue" or game == "yellow", "game must be red, blue or yellow")
 local Data = require("src.core.Data")
 Data:load()
 local Pokemon = require("src.pokemon.Pokemon")
@@ -28,7 +31,7 @@ local Version = require("src.core.Version")
 local cache = os.getenv("RED_CACHE")
   or (os.getenv("POKEPORT_DATA_DIR") or ""):gsub("/data/generated/?$", "")
 local stub = assert(SaveConvert.gen1DataFromDir(cache), "no Gen 1 tables under " .. tostring(cache))
-SaveConvert.setGen1DataStub(stub, "red")
+SaveConvert.setGen1DataStub(stub, game)
 
 math.randomseed(1996)
 
@@ -44,8 +47,8 @@ end
 
 local function save(name, id, party)
   local s = {
-    meta = { format = Version.saveFormat, mods = {}, version = "red" },
-    version = "red",
+    meta = { format = Version.saveFormat, mods = {}, version = game },
+    version = game,
     player = { map = "VIRIDIAN_POKECENTER", x = 11, y = 4, facing = "up",
                name = name, rival = "RIVAL", id = id, surfing = false },
     flags = {
@@ -98,13 +101,13 @@ local function write(path, body)
 end
 
 local function export(s, path)
-  local bytes, note = SaveConvert.exportSav(s, "red")
+  local bytes, note = SaveConvert.exportSav(s, game)
   assert(bytes, note)
   if note then io.stderr:write(path .. ": " .. note .. "\n") end
   assert(#bytes == SaveConvert.SAVE_SIZE)
   write(path, bytes)
   -- read it back the way the launcher imports a cartridge save
-  local back, err = SaveConvert.importSav(bytes, Version.saveFormat, "red")
+  local back, err = SaveConvert.importSav(bytes, Version.saveFormat, game)
   assert(back, err)
   assert(back.player.name == s.player.name and back.player.id == s.player.id, path .. ": trainer did not round-trip")
   assert(back.player.map == s.player.map and back.player.x == s.player.x and back.player.y == s.player.y,
@@ -120,7 +123,8 @@ local function export(s, path)
   return bytes
 end
 
-export(emu, "emu_red.sav")
-export(recomp, "recomp_before.sav")
-write("recomp_slot1.lua", SaveSerializer.encode(recomp))
+local suffix = game == "red" and "" or ("_" .. game)
+export(emu, "emu_" .. game .. ".sav")
+export(recomp, "recomp" .. suffix .. "_before.sav")
+write("recomp" .. suffix .. "_slot1.lua", SaveSerializer.encode(recomp))
 print("round trip ok: both saves re-import with the same trainer, position and party")

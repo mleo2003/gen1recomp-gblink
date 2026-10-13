@@ -97,7 +97,8 @@ function stack:pop() return table.remove(self.states) end
 function stack:top() return self.states[#self.states] end
 
 local cache = (os.getenv("POKEPORT_DATA_DIR") or ""):gsub("/data/generated/?$", "")
-SaveConvert.setGen1DataStub(assert(SaveConvert.gen1DataFromDir(cache)), "red")
+local gameVersion = save.version or (save.meta and save.meta.version) or "red"
+SaveConvert.setGen1DataStub(assert(SaveConvert.gen1DataFromDir(cache)), gameVersion)
 local saves = 0
 local game = {
   data = Data, stack = stack, save = save,
@@ -110,7 +111,7 @@ local game = {
     local fh = assert(io.open(out .. "/recomp_after.lua", "wb"))
     fh:write(SaveSerializer.encode(save))
     fh:close()
-    local bytes, note = SaveConvert.exportSav(save, "red")
+    local bytes, note = SaveConvert.exportSav(save, gameVersion)
     assert(bytes, note)
     fh = assert(io.open(out .. "/recomp_after.sav", "wb"))
     fh:write(bytes)

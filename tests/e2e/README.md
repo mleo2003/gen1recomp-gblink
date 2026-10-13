@@ -14,8 +14,17 @@ BGB (Pokémon Red) ⇄ PokemonGB client ⇄ pokemon-gb-online-trades server ⇄ 
 |---|---|---|---|
 | Lorenzooone client + headless `recomp_headless.lua` | BGB 1.6.6, Red (USA) | engine + mod, no window | PASS both sides |
 | Lorenzooone client + the real game window | BGB 1.6.6, Red (USA) | LÖVE 11.5, release zip 0.1.0 | PASS both sides |
+| Lorenzooone client + headless | BGB 1.6.6, Blue (USA) | Blue | PASS both sides |
+| Lorenzooone client + headless | BGB 1.6.6, Yellow (USA) | Yellow | PASS both sides |
+| Lorenzooone client + headless, Time Capsule | BGB 1.6.6, Gold (USA) | Red | PASS both sides |
+| two copies of the mod, one over `wss://` (engine TLS dialer, macOS build) | — | Red | trade completed |
 
-In each run, EMU's KADABRA "SPOONY" went to gen1recomp and arrived as
+In the Time Capsule run, Gold's HAUNTER (holding a BERRY) went to
+gen1recomp's Red and arrived as GENGAR with catch-rate byte 173, and RECOMP's
+MACHOKE arrived on the Gold cart as MACHAMP holding item 0xB4: both exactly
+what PKHeX's own Gen 1 <-> Gen 2 conversion predicts, and both legal.
+
+In each Gen 1 run, EMU's KADABRA "SPOONY" went to gen1recomp and arrived as
 ALAKAZAM, and RECOMP's MACHOKE arrived on the cartridge as MACHAMP. In both
 directions the OT, ID, DVs, stat exp, EXP, moves, PP, nickname and catch-rate
 byte were kept, and PKHeX rates each arrival legal. The untouched party slots
@@ -27,7 +36,8 @@ party, as the cartridge does it.
 | File | What it does |
 |---|---|
 | `gen_saves.lua` | Writes two test saves standing at Viridian's Cable Club: `emu_red.sav` (a cartridge save for BGB) and `recomp_slot1.lua` (a gen1recomp slot), plus `recomp_before.sav` for checking. It round-trips both through the engine's importer. |
-| `savecheck/` | Uses PKHeX.Core 26.8.26 (.NET 10). `show` lists a save; `trade mine_before mine_after theirs_before` checks a trade from one side. |
+| `gen_saves_gsc.lua` | A Gold/Silver/Crystal cartridge save standing at the Time Capsule receptionist (Pokémon Center 2F, 13,4) with the capsule open and a Time-Capsule-legal party. Gold/Silver mons come out PKHeX-legal; Crystal ones lack caught data, so PKHeX flags them. |
+| `savecheck/` | Uses PKHeX.Core 26.8.26 (.NET 10). `show` lists a Gen 1 or Gen 2 save; `trade mine_before mine_after theirs_before` checks a trade from one side, across generations too (held item <-> catch rate checked against PKHeX's conversion). |
 | `recomp_headless.lua` | gen1recomp's side without a window: the engine, `main.lua`, real luasocket and the real server. It trades one slot and writes `recomp_after.sav`. |
 | `play.sh` | Runs the real game window under a separate LÖVE identity. |
 | `windows/start-emulator.ps1` | Starts Lorenzooone's client and BGB linked to it, in a given room. |
@@ -38,8 +48,13 @@ party, as the cartridge does it.
 **Saves.** Run from the engine root:
 
 ```sh
-POKEPORT_DATA_DIR=<red cache>/data/generated luajit <mod>/tests/e2e/gen_saves.lua <out dir>
+POKEPORT_DATA_DIR=<cache>/data/generated luajit <mod>/tests/e2e/gen_saves.lua <out dir> [red|blue|yellow]
+luajit <mod>/tests/e2e/gen_saves_gsc.lua <gold cache> <out dir> gold      # Time Capsule test
 ```
+
+`recomp_headless.lua` reads the game from the slot it is given, so pointing
+`POKEPORT_DATA_DIR` at the Blue or Yellow cache and handing it that game's
+slot runs gen1recomp's Blue or Yellow.
 
 **Emulator machine (Windows).** Use `C:\gblink-test`:
 
@@ -90,6 +105,14 @@ built by an older engine is refused ("ROM REQUIRED"). Re-import it with
    A pass ends with `PASS` and exit code 0.
 
 ## Caveats found along the way
+
+- **Gold asks to overwrite the save.** At the Time Capsule's save prompt a
+  generated Gold save gets "There is already a save file. Is it OK to
+  overwrite?" (answer YES). The generator writes the main copy only, so the
+  cart sees a different file in its backup slot. Harmless for the test.
+- **Time Capsule order.** The receptionist checks the party, links ("Please
+  wait."), asks to save, then says "Please come in." Inside, walk to the empty
+  stool (two right, three up) and face the table (Left), then press A.
 
 - **No GB-Link BGB app.** gblink.io/bgb points at a GitHub releases page
   that returns 404 (checked 2026-10-13).

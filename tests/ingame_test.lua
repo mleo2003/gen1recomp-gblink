@@ -208,6 +208,29 @@ T.check(closed, "the connection was closed once the far player cancelled too")
 T.check(sawAgain or (type(sawMessage) == "string" and sawMessage:find("left", 1, true)),
         "after the last screen: TRADE AGAIN / END LINK, or the other player left (" .. tostring(sawMessage) .. ")")
 
+-- a wss:// SERVER on a build with no TLS dialer says so instead of dialling
+do
+  local savedServer = run.loader.modOptions.gblink and run.loader.modOptions.gblink.server
+  run.loader.modOptions.gblink = run.loader.modOptions.gblink or {}
+  run.loader.modOptions.gblink.server = "wss://example.test"
+  local tlsOpen = love.system.tlsOpen
+  love.system.tlsOpen = nil
+  local dialled = #fakeSocket.connections
+  opened = nil
+  Overworld.cableClubReceptionist({ game = game })
+  presses = { "down", "a" }
+  opened:update(); opened:update()
+  presses = { "a" }
+  opened:update()
+  T.eq(opened.stage, "message", "wss:// without TLS stops at a message")
+  T.check(tostring(opened.text):find("wss://", 1, true) ~= nil, "which names wss:// (" .. tostring(opened.text) .. ")")
+  T.eq(#fakeSocket.connections, dialled, "and dials nothing")
+  presses = { "a" }
+  opened:update()
+  run.loader.modOptions.gblink.server = savedServer
+  love.system.tlsOpen = tlsOpen
+end
+
 -- the next visit offers the room this one dialled (kept in mod storage)
 opened = nil
 Overworld.cableClubReceptionist({ game = game })

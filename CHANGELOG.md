@@ -3,6 +3,23 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.2.0
+
+### Added
+
+- `wss://` servers, through the engine's TLS dialer (`love.system.tls*`) on
+  the builds that have one: official Windows builds and Android. Elsewhere a
+  `wss://` `SERVER` stops at a message asking for `ws://` instead of failing
+  to connect. Tested live: one player over `wss://`, one over `ws://`, same
+  room, a full trade.
+
+### Tested
+
+- Live trades against real Blue and Yellow carts in BGB, and against a real
+  Gold cart through the Time Capsule, all checked with PKHeX on both sides
+  (`tests/e2e/`). The Time Capsule's held item <-> catch-rate conversion
+  matches PKHeX's.
+
 ## 0.1.2
 
 ### Fixed

@@ -168,5 +168,115 @@ end
 check(Ws.base64("Man") == "TWFu" and Ws.base64("Ma") == "TWE=" and Ws.base64("M") == "TQ==",
       "base64 pads like RFC 4648")
 
+-- ------------------------------------------------------------------
+-- wss:// over the engine's TLS dialer (love.system.tls*): a scripted double
+-- with the dialer's contract -- open -> handle, status 0 connecting /
+-- 1 open / 2 closed, send queues everything, receive drains what arrived
+-- ------------------------------------------------------------------
+
+local function fakeTls(opts)
+  opts = opts or {}
+  local conn = { wire = "", rx = "", status = 0, host = nil, port = nil, chunk = opts.chunk or 9 }
+  local system = {
+    tlsOpen = function(host, port)
+      conn.host, conn.port = host, port
+      if opts.refuse then return -1 end
+      return 7
+    end,
+    tlsStatus = function(h) return h == 7 and conn.status or -1 end,
+    tlsSend = function(h, data)
+      if h ~= 7 or conn.status == 2 then return -1 end
+      conn.wire = conn.wire .. data
+      return #data
+    end,
+    tlsReceive = function(h, max)
+      if h ~= 7 or #conn.rx == 0 then return "" end
+      local take = math.min(max, conn.chunk, #conn.rx)
+      local part = conn.rx:sub(1, take)
+      conn.rx = conn.rx:sub(take + 1)
+      return part
+    end,
+    tlsError = function() return conn.err end,
+    tlsClose = function() conn.closedByClient = true end,
+  }
+  return system, conn
+end
+
+check(Ws.tlsFrom(nil) == nil and Ws.tlsFrom({ tlsOpen = function() end }) == nil,
+      "no TLS dialer unless all of love.system.tls* is there")
+
+do
+  local ws = Ws.new("wss://example.test/link1/12345", { socket = fakeSocket(), now = now })
+  check(ws.closed and ws.error and ws.error:find("TLS", 1, true),
+        "wss:// without the engine's TLS dialer is refused with a reason")
+end
+
+do
+  local system, conn = fakeTls()
+  local ws = Ws.new("wss://example.test/link1/12345", { tls = Ws.tlsFrom(system), now = now,
+                                                         random = function() return 0x2A end })
+  check(conn.host == "example.test" and conn.port == 443, "wss:// dials the host on 443 over TLS")
+  ws:send("SBUF1" .. "\0\2" .. "\1\18")
+  pump(ws, 5)
+  check(conn.wire == "", "nothing is written while TLS is still connecting")
+  conn.status = 1
+  pump(ws, 5)
+  check(conn.wire:find("GET /link1/12345 HTTP/1.1\r\n", 1, true) == 1
+        and conn.wire:find("\r\nHost: example.test\r\n", 1, true),
+        "once TLS is up it sends the upgrade, Host without :443")
+  conn.wire = ""
+  conn.rx = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
+    .. serverFrame(0x1, "CLIENT")
+  pump(ws, 20)
+  check(ws.open, "the upgrade completes over TLS")
+  local frames = readFrames(conn.wire)
+  check(#frames == 1 and frames[1].opcode == 0x2 and frames[1].masked
+        and frames[1].payload == "SBUF1\0\2\1\18",
+        "the message queued before the upgrade goes out masked after it")
+  local got = ws:poll()
+  check(#got == 1 and got[1].text == "CLIENT", "server frames arrive over TLS")
+  conn.rx = serverFrame(0x2, string.rep("x", 300))
+  pump(ws, 60)
+  got = ws:poll()
+  check(#got == 1 and got[1].binary and #got[1].binary == 300, "a 16-bit length frame arrives over TLS in pieces")
+  conn.status = 2
+  pump(ws, 2)
+  check(ws.closed and ws.error == nil and conn.closedByClient,
+        "the TLS stream closing after the upgrade is a close, and the handle is released")
+end
+
+do
+  local system, conn = fakeTls()
+  local ws = Ws.new("wss://example.test:8443/x", { tls = Ws.tlsFrom(system), now = now })
+  conn.status = 1
+  pump(ws, 3)
+  check(conn.port == 8443 and conn.wire:find("\r\nHost: example.test:8443\r\n", 1, true),
+        "a non-default wss port is dialled and named in Host")
+end
+
+do
+  local system, conn = fakeTls()
+  local ws = Ws.new("wss://example.test/x", { tls = Ws.tlsFrom(system), now = now })
+  conn.status, conn.err = 2, "certificate rejected"
+  pump(ws, 2)
+  check(ws.closed and ws.error and ws.error:find("certificate rejected", 1, true),
+        "a TLS failure before the upgrade says why")
+end
+
+do
+  local system = fakeTls({ refuse = true })
+  local ws = Ws.new("wss://example.test/x", { tls = Ws.tlsFrom(system), now = now })
+  check(ws.closed and ws.error and ws.error:find("over TLS", 1, true), "a refused TLS open fails at once")
+end
+
+do
+  local system = fakeTls()
+  local ws = Ws.new("wss://example.test/x", { tls = Ws.tlsFrom(system), now = now })
+  t = 100
+  ws:update()
+  check(ws.closed and ws.error and ws.error:find("timed out", 1, true), "a TLS connect that never finishes times out")
+  t = 0
+end
+
 print(failures == 0 and "gblink ws: all passed" or ("gblink ws: %d failures"):format(failures))
 os.exit(failures == 0 and 0 or 1)
