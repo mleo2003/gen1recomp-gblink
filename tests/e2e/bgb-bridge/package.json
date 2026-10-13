@@ -1,0 +1,9 @@
+{
+  "name": "gblink-bgb-bridge",
+  "private": true,
+  "description": "Serve GB-Link's gb-pokemon-web against BGB without the GB-Link BGB desktop app",
+  "main": "bridge.js",
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}

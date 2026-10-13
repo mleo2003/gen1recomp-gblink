@@ -24,17 +24,23 @@ new release is out.
 ## Use
 
 At any Pokémon Center, talk to the Cable Club receptionist, say YES to the
-save, then pick **GB-LINK ONLINE** and enter a room number. Both players
-must type the same number.
+save, then pick **GB-LINK ONLINE** and enter a room number (Up/Down change
+a digit, Left/Right move between digits). Both players must type the same
+number. Newer engine builds move the receptionist upstairs: take the stairs
+next to the old desk.
 
 The other player:
 
 - **Real Game Boy:** go to pokemon.gblink.io, choose *Gen 1* and *Link Trade*,
   connect the GB-Link adapter, enter the **same room number**, and talk to the
   Cable Club receptionist on the cartridge.
-- **Emulator:** the same page, from the GB-Link BGB app.
-- **Python client:** [PokemonGB_Online_Trades_and_Battles](https://github.com/Lorenzooone/PokemonGB_Online_Trades_and_Battles)
-  4.x, link trade, Gen 1, the same room.
+- **Emulator (BGB):** run [Lorenzooone's PokemonGB client](https://github.com/Lorenzooone/PokemonGB_Online_Trades_and_Battles)
+  as BGB's link partner: `python emulator_trade_battle.py -g 1 -t 2P -r <room> -efc`,
+  then start BGB with `-connect 127.0.0.1:8765` (or BGB's Link > Connect).
+  GB-Link's BGB desktop app does the same through pokemon.gblink.io, but its
+  download was unavailable when this was written.
+- **Python client with a real Game Boy:** the same client's `usb_trade_battle.py`
+  with a GB-Link adapter, link trade, Gen 1, the same room.
 - **This game:** both players pick GB-LINK ONLINE and type the same room.
 
 When both players are in, the other player sits at the Trade Center table and
@@ -62,6 +68,11 @@ luajit mods/gblink/tests/ingame_test.lua        # a whole Cable Club visit throu
 The protocol tests run on a simulated clock. A fake trade server
 (`tests/fake_relay.lua`) adds latency and jitter, and `tests/fake_peer.lua`
 models the far player's client and Game Boy.
+
+`tests/e2e/` is a live test: Pokémon Red in BGB trades with this game over the
+real server, and both saves are then checked with PKHeX. It passed both ways
+(trade evolutions, OT/ID, DVs, stat exp, moves, nickname, catch-rate byte),
+in the real game window as well as headless. See `tests/e2e/README.md`.
 
 Releases are automatic: bump `version` in `manifest.json` (and
 `CHANGELOG.md`) and push to `main`. `.github/workflows/release.yml` packs
