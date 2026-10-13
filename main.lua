@@ -137,8 +137,10 @@ return function(mod)
   end
 
   function GbLink:roomEntry()
+    -- mod storage holds data-only tables, so the room rides in { room = "12345" }
     local ok, saved = pcall(mod.storage.read, mod.storage, self.game, "room")
-    local seed = ok and type(saved) == "string" and saved:match("^%d%d%d%d%d$") or "00000"
+    local last = ok and type(saved) == "table" and saved.room
+    local seed = type(last) == "string" and last:match("^%d%d%d%d%d$") or "00000"
     local entry = CodeEntry.fromText(seed, { length = ROOM_LENGTH, charset = "0123456789" })
     entry.pos = 1
     return entry
@@ -153,7 +155,7 @@ return function(mod)
       return
     end
     local room = CodeEntry.text(self.code)
-    pcall(mod.storage.write, mod.storage, self.game, "room", room)
+    pcall(mod.storage.write, mod.storage, self.game, "room", { room = room })
     local server = tostring(mod.options:get("server") or DEFAULT_SERVER):gsub("/+$", "")
     local ws = Ws.new(server .. "/link1/" .. room, { socket = socket, now = now,
                                                      random = love.math.random })

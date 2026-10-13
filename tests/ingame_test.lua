@@ -114,7 +114,8 @@ local game = {
     if presses[1] == b then table.remove(presses, 1) return true end
     return false
   end },
-  save = { player = { name = "RED", id = 1234 },
+  save = { version = "red", meta = { playthroughId = "gblinkingametest0001" },
+           player = { name = "RED", id = 1234 },
            party = mons({ { "PIKACHU", 25 }, { "SPEAROW", 20 }, { "GRAVELER", 28 } }, "RED", 1234),
            pokedex = { seen = {}, owned = {} }, flags = {} },
   writeSave = function() saves = saves + 1 end,
@@ -206,6 +207,15 @@ end
 T.check(closed, "the connection was closed once the far player cancelled too")
 T.check(sawAgain or (type(sawMessage) == "string" and sawMessage:find("left", 1, true)),
         "after the last screen: TRADE AGAIN / END LINK, or the other player left (" .. tostring(sawMessage) .. ")")
+
+-- the next visit offers the room this one dialled (kept in mod storage)
+opened = nil
+Overworld.cableClubReceptionist({ game = game })
+presses = { "down", "a" }
+opened:update(); opened:update()
+T.eq(opened.stage, "code", "the second visit asks for a room again")
+T.eq(CodeEntry.text(opened.code), "31337", "and offers the room from last time")
+stack:pop()
 
 run.release()
 T.finish("gblink ingame")

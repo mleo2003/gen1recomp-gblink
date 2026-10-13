@@ -3,6 +3,16 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.1.2
+
+### Fixed
+
+- The room-number screen offers the last room you dialled again. Mod
+  storage only keeps data-only tables, and the room was written as a plain
+  string, so the write was refused and every visit started at 00000.
+  `tests/ingame_test.lua` now checks that a second visit gets the room
+  back.
+
 ## 0.1.1
 
 ### Fixed
