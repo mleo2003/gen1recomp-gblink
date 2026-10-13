@@ -1,0 +1,26 @@
+{
+  "id": "gblink",
+  "name": "GB-Link Online Trades",
+  "version": "0.1.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "content",
+  "category": "TOOL",
+  "game_version": ">=0.0.0-0 <2.0.0",
+  "games": [
+    "red",
+    "blue",
+    "yellow"
+  ],
+  "priority": 100,
+  "permissions": [
+    "network",
+    "engine_internals"
+  ],
+  "affects_link": false,
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "description": "Trade at the Cable Club with real Game Boys and emulators online: pokemon.gblink.io, the GB-Link adapter, BGB and the PokemonGB Online Trades client all meet in the same five-digit rooms.",
+  "github": "mleo2003/gen1recomp-gblink"
+}

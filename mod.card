@@ -1,0 +1,31 @@
+-- Sharing metadata (25-community-and-ecosystem.md 3.2).  Read by tooling
+-- and the manager detail pane; never by the loader's merge.
+return {
+  summary = "Cable Club trades with real Game Boys and emulators via pokemon.gblink.io rooms.",
+  author = "mleo2003",
+  contact = "https://github.com/mleo2003/gen1recomp-gblink",
+  tags = { "multiplayer", "online", "trade", "link-cable", "tool" },
+  differences = {
+    changed = {
+      "the Cable Club receptionist's link opens a choice: LAN CABLE or GB-LINK ONLINE",
+      "a mon received over GB-Link is filed at the END of the party, as the cart does",
+    },
+    added = {
+      "GB-LINK ONLINE: five-digit rooms on the Pokemon GB online trade server",
+      "sync and buffered trades with pokemon.gblink.io and PokemonGB Online Trades 4.x",
+      "mod option: SERVER (a ws:// address; default the public server)",
+    },
+    known = {
+      "ws:// only: this build has no TLS library, so wss:// servers are refused",
+      "the protocol gives up on a byte after 0.8 s, so links slower than ~350 ms each way can abort",
+      "Gen 1 only: Gold/Silver/Crystal (Time Capsule) peers use the same rooms but are untested",
+      "battles (the Colosseum) are not offered",
+    },
+  },
+  credits = {
+    { who = "Lorenzooone", for_ = "PokemonGB_Online_Trades_and_Battles (MIT), the protocol and server" },
+    { who = "GB-Link", for_ = "pokemon.gblink.io and the GB-Link adapter" },
+    { who = "pret/pokered", for_ = "the cable club routines the data format comes from" },
+  },
+  compat = { engine = ">=1.0.0 <2.0.0", modApi = 2 },
+}
