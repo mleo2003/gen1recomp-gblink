@@ -24,7 +24,7 @@ end
 
 local run = T.sdk.loadMod(here, { data = Data })
 T.eq(#run.errors, 0, "loads clean (" .. tostring(run.errors[1]) .. ")")
-T.eq(run.loader.exports.gblink.version, "0.1.0", "exports its version")
+T.eq(run.loader.exports.gblink.version, run.loader.mods.gblink.manifest.version, "exports its manifest version")
 
 -- ------- the receptionist's door
 

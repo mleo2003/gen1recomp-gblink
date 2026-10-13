@@ -1,1 +1,20 @@
-tests/
+# modkit matches exact paths only: every test file, none of them ship
+tests/e2e/.gitignore
+tests/e2e/bgb-bridge/bridge.js
+tests/e2e/bgb-bridge/package.json
+tests/e2e/bgb-bridge/shim.js
+tests/e2e/gen_saves.lua
+tests/e2e/play.sh
+tests/e2e/README.md
+tests/e2e/recomp_headless.lua
+tests/e2e/savecheck/nuget.config
+tests/e2e/savecheck/Program.cs
+tests/e2e/savecheck/savecheck.csproj
+tests/e2e/windows/start-emulator.ps1
+tests/fake_peer.lua
+tests/fake_relay.lua
+tests/fake_socket.lua
+tests/gblink_test.lua
+tests/ingame_test.lua
+tests/online_trade_test.lua
+tests/ws_test.lua

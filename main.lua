@@ -269,9 +269,9 @@ return function(mod)
       Font.draw(Strings("LAN CABLE"), 32, 48)
       Font.draw(Strings("GB-LINK ONLINE"), 32, 68)
       Font.drawCode(CURSOR, 24, self.index == 1 and 48 or 68)
-      Font.draw(Strings("Online: trade with a"), 8, 104)
-      Font.draw(Strings("Game Boy or emulator"), 8, 116)
-      Font.draw("pokemon.gblink.io", 8, 128)
+      -- 19 characters fit after the 8 px margin (the screen is 160 px)
+      drawLines({ Strings("Online: trade with"), Strings("a Game Boy or an"),
+                  Strings("emulator through"), "pokemon.gblink.io" }, 8, 92)
 
     elseif self.stage == "code" then
       drawTitle(Strings("GB-LINK ONLINE"))
@@ -282,7 +282,7 @@ return function(mod)
         if i == self.code.pos then Font.drawCode(0xEE, x, 64) end
       end
       drawLines({ Strings("Both players enter"), Strings("the same number."),
-                  Strings("Gen 1, Link Trade on"), "pokemon.gblink.io" }, 8, 80)
+                  "pokemon.gblink.io:", Strings("Gen 1, Link Trade") }, 8, 80)
       Font.draw(Strings("A: link  B: back"), 8, 132)
 
     elseif self.stage == "linking" then
@@ -348,5 +348,5 @@ return function(mod)
     return realNew(game, ...)
   end
 
-  mod.exports.version = "0.1.0"
+  mod.exports.version = mod.version  -- the manifest's, which the release stamps
 end

@@ -63,6 +63,15 @@ end
 local run = T.sdk.loadMod(here, { data = Data })
 T.eq(#run.errors, 0, "loads clean (" .. tostring(run.errors[1]) .. ")")
 
+-- every line the screens draw has to fit the 160 px screen, 8 px a character
+local Font = require("src.render.Font")
+local overflow = {}
+Font.draw = function(text, x)
+  text = tostring(text)
+  if x + #text * 8 > 160 then overflow[#overflow + 1] = ("%q at x=%d"):format(text, x) end
+end
+Font.drawCode = function() end
+
 local env = {
   data = Data, cw = require("src.save_convert.GenSave").crosswalks(Data),
   charmap = require("src.save_convert.data.charmap"), Stats = Stats,
@@ -115,9 +124,11 @@ stack:push(overworld)
 
 Overworld.cableClubReceptionist({ game = game })
 T.eq(opened and opened.stage, "door", "the receptionist opens the door")
+opened:draw()
 presses = { "down", "a" }
 opened:update(); opened:update()
 T.eq(opened.stage, "code", "GB-LINK ONLINE asks for a room")
+opened:draw()
 opened.code = CodeEntry.fromText("31337", { length = 5, charset = "0123456789" })
 presses = { "a" }
 opened:update()
@@ -145,6 +156,7 @@ while clock < 120 do
         presses = { "a" }
       end
       opened:update()
+      if stack:top() == opened then opened:draw() end
     elseif top and getmetatable(top) == LinkState then
       top:update(1 / 60)
       local t = top.trade
@@ -176,6 +188,8 @@ for _ = 1, 600 do  -- let END LINK's background CANCEL finish
 end
 
 T.eq(peer.err, nil, "the far client ran clean")
+T.eq(#overflow, 0, "every line on the mod's screens fits the 160 px screen ("
+     .. tostring(overflow[1]) .. ")")
 T.check(sawStatus.waiting or sawStatus.negotiating, "the link screen showed its progress")
 T.eq(peer.traded, 2, "two trades went through main.lua's own screens")
 local p = game.save.party
