@@ -1,7 +1,7 @@
 -- Sharing metadata (25-community-and-ecosystem.md 3.2).  Read by tooling
 -- and the manager detail pane; never by the loader's merge.
 return {
-  summary = "Cable Club trades with real Game Boys and emulators via pokemon.gblink.io rooms.",
+  summary = "Online trades with real Game Boys and emulators via pokemon.gblink.io rooms (Red/Blue/Yellow and Gold/Silver/Crystal).",
   author = "mleo2003",
   contact = "https://github.com/mleo2003/gen1recomp-gblink",
   tags = { "multiplayer", "online", "trade", "link-cable", "tool" },
@@ -9,23 +9,26 @@ return {
     changed = {
       "the Cable Club receptionist's link opens a choice: LAN CABLE or GB-LINK ONLINE",
       "a mon received over GB-Link is filed at the END of the party, as the cart does",
+      "Gold/Silver/Crystal: the Pokemon Center 2F Trade Center desk opens a GB-Link room instead of waiting for a cable",
     },
     added = {
       "GB-LINK ONLINE: five-digit rooms on the Pokemon GB online trade server",
       "sync and buffered trades with pokemon.gblink.io and PokemonGB Online Trades 4.x",
+      "Gold/Silver/Crystal Trade Center table: STATS, TRADE, mail, trade evolutions and the autosave",
       "mod option: SERVER (a ws:// or wss:// address; default the public server)",
     },
     known = {
       "wss:// needs the engine's TLS dialer (official Windows builds, Android); elsewhere use ws://",
       "the protocol gives up on a byte after 0.8 s, so links slower than ~350 ms each way can abort",
-      "Gen 1 only: Gold/Silver/Crystal (Time Capsule) peers use the same rooms but are untested",
+      "Gold/Silver/Crystal: the Time Capsule desk is not offered (a Gold cart still reaches Red/Blue/Yellow through its own)",
+      "Crystal and Silver are covered by the automated tests; the live cart tests used Gold",
       "battles (the Colosseum) are not offered",
     },
   },
   credits = {
     { who = "Lorenzooone", for_ = "PokemonGB_Online_Trades_and_Battles (MIT), the protocol and server" },
     { who = "GB-Link", for_ = "pokemon.gblink.io and the GB-Link adapter" },
-    { who = "pret/pokered", for_ = "the cable club routines the data format comes from" },
+    { who = "pret/pokered and pret/pokecrystal", for_ = "the cable club routines the data formats come from" },
   },
   compat = { engine = ">=1.0.0 <2.0.0", modApi = 2 },
 }

@@ -4,6 +4,7 @@
 -- simulated clock -- sync and buffered, with and without mail.
 --
 --   GOLD_CACHE=<imported gold cache dir> luajit mods/gblink/tests/gen2_test.lua
+--   GEN2_GAME=crystal GOLD_CACHE=<imported crystal cache dir> ...   (or silver)
 package.path = "./?.lua;./?/init.lua;" .. package.path
 love = love or require("tests.love_stub")
 
@@ -12,7 +13,8 @@ local cache = assert(os.getenv("GOLD_CACHE"), "set GOLD_CACHE to an imported Gol
 
 local T = require("tests.modkit")
 local GameVersion = require("src.core.GameVersion")
-GameVersion.set("gold")
+local game = os.getenv("GEN2_GAME") or "gold"
+GameVersion.set(game)
 local SaveConvert = require("src.save_convert.SaveConvert")
 local Gen2Save = require("src.save_convert.Gen2Save")
 local Gen2Layout = require("src.save_convert.Gen2Layout")
@@ -28,7 +30,7 @@ local Link2 = dofile(here .. "/lib/link2.lua")
 local FakeRelay = dofile(here .. "/tests/fake_relay.lua")
 
 local env = { data = data, cw = Gen2Save.crosswalks(data), charmap = Gen2Layout.charmap,
-              Mon = Mon, crystal = false }
+              Mon = Mon, crystal = game == "crystal" }
 
 local function mon(species, level, opts)
   opts = opts or {}
@@ -365,4 +367,4 @@ run("an offer that is not in their party is declined", {
   end,
 })
 
-T.finish("gblink gen2")
+T.finish("gblink gen2 (" .. game .. ")")

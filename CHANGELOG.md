@@ -3,6 +3,40 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.3.0
+
+### Added
+
+- **Gold, Silver and Crystal.** The Pokémon Center 2F Trade Center desk
+  opens a GB-Link room (pokemon.gblink.io's *Gen 2* rooms). The cart's own
+  receptionist script runs; the mod fills in its cable steps
+  (`WaitForLinkedFriend`, the link checks, `TradeCenter`, `CloseLink`) and
+  brings the table: both parties, STATS, TRADE, the confirm, then the
+  engine's Gen 2 trade animation, trade evolution (Everstone and held-item
+  rules) and the autosave. Mail travels with its Pokémon.
+- The Gen 2 online trade protocol (`/link2/`): party, patch list and mail
+  sections in sync or buffered mode, CHC2 / ACP2 / ASK2 / SUC2 / MVS2.
+
+### Changed
+
+- An offered Pokémon is looked up in this side's copy of the other party
+  (strong match, then a match that ignores OT and nickname, as the Python
+  client does it), and that copy is what trades. An offer that matches
+  nothing is declined. Seen live: the Python client, re-reading its own
+  cart over BGB's link, offered a mon with a mangled OT and nickname. Red,
+  Blue and Yellow get the same protection.
+- A CANCEL from either side ends the trade menu for both, as on the carts.
+  If the other client lets its player pick again anyway, the pick is
+  answered with CANCEL while the link lingers.
+
+### Tested
+
+- Live, Gold in gen1recomp against a Gold cart in BGB at the Trade Center,
+  both in the real game window and headless: ONIX holding a Metal Coat
+  arrived as STEELIX (item used), MACHOKE arrived on the cart as MACHAMP,
+  and offering the fresh STEELIX back for the cart's HAUNTER worked. Both
+  saves pass PKHeX's checks (`tests/e2e/`).
+
 ## 0.2.0
 
 ### Added

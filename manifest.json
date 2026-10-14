@@ -1,7 +1,7 @@
 {
   "id": "gblink",
   "name": "GB-Link Online Trades",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -10,7 +10,10 @@
   "games": [
     "red",
     "blue",
-    "yellow"
+    "yellow",
+    "gold",
+    "silver",
+    "crystal"
   ],
   "priority": 100,
   "permissions": [
@@ -21,6 +24,6 @@
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],
-  "description": "Trade at the Cable Club with real Game Boys and emulators online: pokemon.gblink.io, the GB-Link adapter, BGB and the PokemonGB Online Trades client all meet in the same five-digit rooms.",
+  "description": "Trade online with real Game Boys and emulators: the Cable Club in Red/Blue/Yellow and the Pokemon Center 2F Trade Center in Gold/Silver/Crystal meet pokemon.gblink.io, the GB-Link adapter, BGB and the PokemonGB Online Trades client in the same five-digit rooms.",
   "github": "mleo2003/gen1recomp-gblink"
 }

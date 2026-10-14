@@ -13,6 +13,11 @@
 --   lib/codec.lua    party <-> the cart's 0x1A2-byte block and patch list
 --   lib/link.lua     one Cable Club visit: session + both parties
 --   lib/bridge.lua   LinkState's transport, played against the Link
+--
+-- Gold, Silver and Crystal (lib/gen2.lua): the Pokémon Center 2F Trade
+-- Center desk opens a /link2/ room instead, and the table is the mod's own
+-- screen (lib/tradecenter2.lua) over lib/link2.lua, lib/codec2.lua and
+-- lib/party2.lua.
 
 return function(mod)
   local function lib(name)
@@ -21,6 +26,8 @@ return function(mod)
   end
   local Codec, Proto, Ws = lib("codec"), lib("proto"), lib("ws")
   local Session, Link, Bridge = lib("session"), lib("link"), lib("bridge")
+  local GameVersion = require("src.core.GameVersion")
+  local generation = GameVersion.generation() or 1
 
   local DEFAULT_SERVER = "ws://pokemon-gb-online-trades.herokuapp.com"
   local ROOM_LENGTH = 5
@@ -31,6 +38,10 @@ return function(mod)
     { key = "server", label = "SERVER", type = "text",
       default = DEFAULT_SERVER, maxLen = 96 },
   })
+
+  local function serverUrl()
+    return (tostring(mod.options:get("server") or DEFAULT_SERVER):gsub("/+$", ""))
+  end
 
   local LinkState = require("src.link.LinkState")
   local Protocol = require("src.link.Protocol")
@@ -166,7 +177,7 @@ return function(mod)
     end
     local room = CodeEntry.text(self.code)
     pcall(mod.storage.write, mod.storage, self.game, "room", { room = room })
-    local server = tostring(mod.options:get("server") or DEFAULT_SERVER):gsub("/+$", "")
+    local server = serverUrl()
     -- wss:// needs the engine's TLS dialer (official Windows builds, Android)
     local tls = Ws.tlsFrom(love.system)
     if server:match("^wss://") and not tls then
@@ -344,26 +355,49 @@ return function(mod)
   -- real ones again, not its own last wrapper)
   -- ------------------------------------------------------------------
 
-  LinkState._gblinkNew = LinkState._gblinkNew or LinkState.new
-  Overworld._gblinkReceptionist = Overworld._gblinkReceptionist or Overworld.cableClubReceptionist
-  local realNew = LinkState._gblinkNew
-  local realReceptionist = Overworld._gblinkReceptionist
-  local atDesk = false
-
-  Overworld.cableClubReceptionist = function(ow, onDone)
-    atDesk = true
-    return realReceptionist(ow, function(...)
-      atDesk = false
-      if onDone then return onDone(...) end
-    end)
+  if generation == 2 then
+    lib("gen2")({
+      mod = mod, log = log, now = now, track = track, server = serverUrl,
+      game = function()
+        local ok, game = pcall(function() return mod.game end)
+        return ok and game or nil
+      end,
+      ROOM_LENGTH = ROOM_LENGTH,
+      Proto = Proto, Ws = Ws, Session = Session,
+      Codec2 = lib("codec2"), Link2 = lib("link2"), Party2 = lib("party2"),
+      TradeCenter2 = lib("tradecenter2"),
+    })
+    mod.exports.version = mod.version
+    return
   end
 
-  LinkState.new = function(game, ...)
-    if atDesk then
-      atDesk = false
-      return GbLink.door(game, realNew)
+  -- Red/Blue/Yellow: the Cable Club receptionist.  A Gold boot facades
+  -- OverworldController over its world, which has no such member, so the
+  -- wrap goes onto whichever table really carries it (nil on Gen 2; Gold
+  -- returned above anyway).
+  local desk = Overworld.cableClubReceptionist and Overworld
+  if desk then
+    LinkState._gblinkNew = LinkState._gblinkNew or LinkState.new
+    desk._gblinkReceptionist = desk._gblinkReceptionist or desk.cableClubReceptionist
+    local realNew = LinkState._gblinkNew
+    local realReceptionist = desk._gblinkReceptionist
+    local atDesk = false
+
+    desk.cableClubReceptionist = function(ow, onDone)
+      atDesk = true
+      return realReceptionist(ow, function(...)
+        atDesk = false
+        if onDone then return onDone(...) end
+      end)
     end
-    return realNew(game, ...)
+
+    LinkState.new = function(game, ...)
+      if atDesk then
+        atDesk = false
+        return GbLink.door(game, realNew)
+      end
+      return realNew(game, ...)
+    end
   end
 
   mod.exports.version = mod.version  -- the manifest's, which the release stamps

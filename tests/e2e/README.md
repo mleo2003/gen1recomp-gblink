@@ -18,11 +18,21 @@ BGB (Pokémon Red) ⇄ PokemonGB client ⇄ pokemon-gb-online-trades server ⇄ 
 | Lorenzooone client + headless | BGB 1.6.6, Yellow (USA) | Yellow | PASS both sides |
 | Lorenzooone client + headless, Time Capsule | BGB 1.6.6, Gold (USA) | Red | PASS both sides |
 | two copies of the mod, one over `wss://` (engine TLS dialer, macOS build) | — | Red | trade completed |
+| Lorenzooone client (Gen 2) + headless `recomp2_headless.lua`, Trade Center | BGB 1.6.6, Gold (USA) | Gold | PASS both sides, two trades |
+| Lorenzooone client (Gen 2) + the real game window, Trade Center | BGB 1.6.6, Gold (USA) | LÖVE 11.5, Gold, working copy of 0.3.0 | PASS both sides |
 
 In the Time Capsule run, Gold's HAUNTER (holding a BERRY) went to
 gen1recomp's Red and arrived as GENGAR with catch-rate byte 173, and RECOMP's
 MACHOKE arrived on the Gold cart as MACHAMP holding item 0xB4: both exactly
 what PKHeX's own Gen 1 <-> Gen 2 conversion predicts, and both legal.
+
+In the Trade Center runs (Gold on both sides), the cart's ONIX holding a
+METAL COAT arrived in gen1recomp as STEELIX with the item used up, and
+RECOMP's MACHOKE arrived on the cart as MACHAMP. In the headless run the
+fresh STEELIX was then offered back for the cart's HAUNTER, which arrived as
+GENGAR. The Python client only accepts such an offer if our copy of our own
+party still matches its copy byte for byte. `savecheck trades` replays both
+rounds and checks every slot of both saves; all arrivals are PKHeX-legal.
 
 In each Gen 1 run, EMU's KADABRA "SPOONY" went to gen1recomp and arrived as
 ALAKAZAM, and RECOMP's MACHOKE arrived on the cartridge as MACHAMP. In both
@@ -36,9 +46,10 @@ party, as the cartridge does it.
 | File | What it does |
 |---|---|
 | `gen_saves.lua` | Writes two test saves standing at Viridian's Cable Club: `emu_red.sav` (a cartridge save for BGB) and `recomp_slot1.lua` (a gen1recomp slot), plus `recomp_before.sav` for checking. It round-trips both through the engine's importer. |
-| `gen_saves_gsc.lua` | A Gold/Silver/Crystal cartridge save standing at the Time Capsule receptionist (Pokémon Center 2F, 13,4) with the capsule open and a Time-Capsule-legal party. Gold/Silver mons come out PKHeX-legal; Crystal ones lack caught data, so PKHeX flags them. |
-| `savecheck/` | Uses PKHeX.Core 26.8.26 (.NET 10). `show` lists a Gen 1 or Gen 2 save; `trade mine_before mine_after theirs_before` checks a trade from one side, across generations too (held item <-> catch rate checked against PKHeX's conversion). |
+| `gen_saves_gsc.lua` | Gold/Silver/Crystal saves. `capsule` (default): a cartridge save at the Time Capsule receptionist (Pokémon Center 2F, 13,4) with the capsule open and a Time-Capsule-legal party. `trade`: a cartridge save (`cart_<game>.sav`) and a gen1recomp save (`recomp2_<game>.sav` + `_slot1.lua`) both at the Trade Center receptionist (5,3) with her gate open. Gold/Silver mons come out PKHeX-legal; Crystal ones lack caught data, so PKHeX flags them. |
+| `savecheck/` | Uses PKHeX.Core 26.8.26 (.NET 10). `show` lists a Gen 1 or Gen 2 save; `trade mine_before mine_after theirs_before` checks one trade from one side, across generations too (held item <-> catch rate checked against PKHeX's conversion); `trades mine_before mine_after theirs_before m/t,m/t` replays several Gen 2 trades (slots given and taken each round, Everstone and held-item evolutions) and checks every slot. |
 | `recomp_headless.lua` | gen1recomp's side without a window: the engine, `main.lua`, real luasocket and the real server. It trades one slot and writes `recomp_after.sav`. |
+| `recomp2_headless.lua` | The Gen 2 side without a window: the engine's Gen 2 data, Mail and Evolution, the mod's Gen 2 stack, real luasocket and the real server. It offers the slots it is given round by round (`1,last` by default), accepts what comes, and writes `recomp2_after.sav` after each trade. |
 | `play.sh` | Runs the real game window under a separate LÖVE identity. |
 | `windows/start-emulator.ps1` | Starts Lorenzooone's client and BGB linked to it, in a given room. |
 | `bgb-bridge/` | GB-Link's own web client (gb-pokemon-web) driving BGB, without the GB-Link BGB desktop app. See the caveat below. |
@@ -50,6 +61,15 @@ party, as the cartridge does it.
 ```sh
 POKEPORT_DATA_DIR=<cache>/data/generated luajit <mod>/tests/e2e/gen_saves.lua <out dir> [red|blue|yellow]
 luajit <mod>/tests/e2e/gen_saves_gsc.lua <gold cache> <out dir> gold      # Time Capsule test
+luajit <mod>/tests/e2e/gen_saves_gsc.lua <gold cache> <out dir> gold trade  # Trade Center test
+```
+
+For the Trade Center test, start Lorenzooone's client with `-g 2` and run
+
+```sh
+LUA_CPATH='<luasocket>/?.so;;' luajit <mod>/tests/e2e/recomp2_headless.lua <gold cache> <out>/recomp2_gold_slot1.lua <room> <out dir> 1,last
+savecheck trades recomp2_gold.sav recomp2_after.sav cart_gold.sav 1/1,3/1
+savecheck trades cart_gold.sav cart_after.sav recomp2_gold.sav 1/1,1/3
 ```
 
 `recomp_headless.lua` reads the game from the slot it is given, so pointing
@@ -106,6 +126,21 @@ built by an older engine is refused ("ROM REQUIRED"). Re-import it with
 
 ## Caveats found along the way
 
+- **The Python client's local re-feed over BGB can slip bytes.** After every
+  Gen 2 trade both carts sit down again and the client re-feeds its cart
+  locally, fast, from its own copies. In some runs that feed came out
+  shifted: the client's copy of its own HAUNTER had OT "??CART" + $FE and a
+  nickname with five stray bytes and a $FE inside, and the cart received our
+  STEELIX with OT "T" and nickname "X". The structs were intact. In
+  buffered mode (`-b`) even round 1 came out shifted. Other runs were clean.
+  gen1recomp trades from its own copy of the far party (matched the way the
+  client matches, struct first), so it filed the real mon each time; the
+  cart's side is the client's. For emulator tests: sync mode, and check the
+  cart's arrivals with savecheck.
+- **The cart can hang at "Please wait."** after its save, while the client
+  already says it entered the room: the cart and the client lost step on
+  their local link. Restart both (and BGB) and drive the cart's dialogue
+  without long pauses.
 - **Gold asks to overwrite the save.** At the Time Capsule's save prompt a
   generated Gold save gets "There is already a save file. Is it OK to
   overwrite?" (answer YES). The generator writes the main copy only, so the
