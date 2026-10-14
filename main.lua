@@ -25,6 +25,7 @@ return function(mod)
   local DEFAULT_SERVER = "ws://pokemon-gb-online-trades.herokuapp.com"
   local ROOM_LENGTH = 5
   local LINGER_SECONDS = 90
+  local ANSWER_SECONDS = 30   -- after a one-sided CANCEL (Session:afterEnd)
 
   mod.options:define({
     { key = "server", label = "SERVER", type = "text",
@@ -89,8 +90,11 @@ return function(mod)
       -- a link whose screen is gone (Game:breakLink unwinds the whole
       -- stack after an engine error) has nobody left to finish it
       local orphaned = not link.lingering and link.owner and not onStack(game, link.owner)
+      -- a lingering link stays while it still has something to answer
+      -- (Session:afterEnd) and until its time is up
+      local finished = link.ended and not (link.session and link.session.answering)
       local done = link.closed or orphaned
-        or (link.lingering and (link.ended or link.error or now() > link.lingerUntil))
+        or (link.lingering and (finished or link.error or now() > link.lingerUntil))
       if done then
         link:close()
         table.remove(live, i)
@@ -133,7 +137,12 @@ return function(mod)
   end
 
   function GbLink:pop()
-    if self.link and not self.link.lingering then self.link:close() end
+    local link = self.link
+    if link and link.ended and link.session and link.session.answering and not link.lingering then
+      link.lingering = true
+      link.lingerUntil = now() + ANSWER_SECONDS
+    end
+    if link and not link.lingering then link:close() end
     if self.game.stack:top() == self then self.game.stack:pop() end
   end
 

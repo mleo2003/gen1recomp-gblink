@@ -98,6 +98,33 @@ function Link:evolvePacked(mon, to)
   mon.hp = math.max(0, math.min(after, (tonumber(mon.hp) or before) + after - before))
 end
 
+-- the same mon: what a trade and an evolution never change (species is
+-- included because our copy evolves with the far side's), and -- strong
+-- pass only -- the OT and nickname.  A strong match anywhere wins.
+local function sameMon(a, b, weak)
+  local da, db = a.dvs or {}, b.dvs or {}
+  local sa, sb = a.statExp or {}, b.statExp or {}
+  if a.species ~= b.species or a.otId ~= b.otId or a.exp ~= b.exp or a.level ~= b.level then return false end
+  for _, k in ipairs({ "attack", "defense", "speed", "special" }) do
+    if da[k] ~= db[k] then return false end
+  end
+  for _, k in ipairs({ "hp", "attack", "defense", "speed", "special" }) do
+    if sa[k] ~= sb[k] then return false end
+  end
+  if weak then return true end
+  return a.ot == b.ot and a.nickname == b.nickname
+end
+
+function Link.findMon(party, mon)
+  for i, m in ipairs(party or {}) do
+    if sameMon(mon, m, false) then return i end
+  end
+  for i, m in ipairs(party or {}) do
+    if sameMon(mon, m, true) then return i end
+  end
+  return nil
+end
+
 function Link:applyTrade()
   local cur = self.cur
   local party = self.theirParty
@@ -128,8 +155,9 @@ function Link:choose(slot)
   return true
 end
 
+-- an offer that matched nothing in our copy is always a "no"
 function Link:accept(ok)
-  self.session:accept(ok)
+  self.session:accept(ok and not self.cur.mismatch)
 end
 
 function Link:cancel()
@@ -188,14 +216,23 @@ function Link:handle(ev)
       self.cur.theirSlot = nil
       self:notify({ type = "theirStop" })
     else
-      self.cur.theirSlot = ev.slot
+      -- CHC1's bytes only say WHICH mon: it is looked up in our copy of
+      -- their party, and that copy is what trades (the Python client's
+      -- search_for_mon does the same).  A far side whose own copy of its
+      -- party went wrong -- seen live on Gen 2, its client re-reading a
+      -- cart over a slipping link -- then still trades the real mon, and an
+      -- offer that is in our copy nowhere is declined.
       local mon = ev.mon and self.Codec.decodeSingle(self.env, ev.mon)
-      -- the far side's own bytes for the mon it offers are the truth; our
-      -- copy of its party is only a rebuild
-      if mon and self.theirParty and self.theirParty[ev.slot + 1] then
-        self.theirParty[ev.slot + 1] = mon
+      local idx = mon and Link.findMon(self.theirParty, mon)
+      if idx then
+        self.cur.theirSlot, self.cur.mismatch = idx - 1, nil
+        self:notify({ type = "theirPick", slot = idx - 1, mon = self.theirParty[idx] })
+      else
+        self.cur.theirSlot, self.cur.mismatch = ev.slot, true
+        self.log("gblink: their offer (slot %d) is not in our copy of their party; declining", ev.slot + 1)
+        self:notify({ type = "theirPick", slot = ev.slot, mismatch = true,
+                      mon = self.theirParty and self.theirParty[ev.slot + 1] })
       end
-      self:notify({ type = "theirPick", slot = ev.slot, mon = mon })
     end
   elseif kind == "theirAccept" then
     self:notify({ type = "theirAccept", ok = ev.ok })

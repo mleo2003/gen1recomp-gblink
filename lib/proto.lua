@@ -135,4 +135,76 @@ function Proto.decodeWindow(s)
   return out
 end
 
+-- ------------------------------------------------------------------
+-- generations.  Proto itself is Gen 1 (/link1/); Proto.forGen(2) is the
+-- Gen 2 (/link2/) profile: the same framing and SNG windows, with "2"
+-- message names, longer sections, a mail section, a bigger CHC payload,
+-- MVS without the species byte and the menu bytes moved up by $10
+-- (gsc_trading.py GSCTradingClient / GSCTrading; RBY subclasses both).
+-- ------------------------------------------------------------------
+
+local KINDS = { "FLL", "SNG", "POL", "MVS", "CHC", "ACP", "SUC", "BUF", "NEG",
+                "VEC", "VES", "RAN", "ASK" }
+
+local function names(suffix)
+  local t = {}
+  for _, k in ipairs(KINDS) do t[k] = k .. suffix end
+  t.MAI = "MAI" .. suffix
+  return t
+end
+
+Proto.GEN = 1
+Proto.T = names("1")
+Proto.ROOM = "link1"
+Proto.MON_LENGTH = 0x42           -- CHC1 mon: struct 44 + OT 11 + nickname 11
+Proto.MOVES_LENGTH = 9            -- MVS1: species, 4 moves, 4 PP
+Proto.SYNC_SECTIONS = { 1, 2 }
+Proto.MAIL_SECTION = nil
+
+local GEN2 = {
+  GEN = 2,
+  T = names("2"),
+  ROOM = "link2",
+  -- gsc_trading.py GSCTradingClient.possible_transfers
+  LENGTHS = {
+    FLL2 = { [0x40C] = true, [0x412] = true },
+    SNG2 = { [32] = true, [7] = true },
+    POL2 = { [0x77] = true, [2] = true },
+    MVS2 = { [9] = true },                  -- counter, 4 moves, 4 PP
+    MAI2 = { [0x24D] = true, [0x24C] = true },
+    CHC2 = { [0x78] = true, [2] = true },   -- counter, choice, 0x75-byte mon, egg flag | stop
+    ACP2 = { [2] = true },
+    SUC2 = { [2] = true },
+    BUF2 = { [2] = true },
+    NEG2 = { [2] = true },
+    VEC2 = { [6] = true },
+    VES2 = { [6] = true },
+    RAN2 = { [10] = true },
+    ASK2 = { [2] = true },
+  },
+  FIRST_INDEX = 0x70,
+  STOP = 0x7F,
+  DECLINE = 0x71,
+  ACCEPT = 0x72,
+  -- random, party, patch list, mail (gsc_trading.py:460-464)
+  SECTION_LENGTHS = { [0] = 0x0A, [1] = 0x1BC, [2] = 0xC5, [3] = 0x181 },
+  MON_LENGTH = 0x76,                -- struct 48 + OT 11 + nick 11 + mail 33 + meta 14, + egg flag
+  MOVES_LENGTH = 8,                 -- MVS2: 4 moves, 4 PP
+  SYNC_SECTIONS = { 1, 2 },
+  MAIL_SECTION = 3,                 -- synced only when either party holds mail
+}
+
+local profiles = { [1] = Proto }
+
+function Proto.forGen(gen)
+  if gen == 1 or gen == nil then return Proto end
+  if profiles[gen] then return profiles[gen] end
+  assert(gen == 2, "the trade server has no generation " .. tostring(gen) .. " rooms")
+  local P = setmetatable({}, { __index = Proto })
+  for k, v in pairs(GEN2) do P[k] = v end
+  P.decode = function(msg, lengths) return Proto.decode(msg, lengths or P.LENGTHS) end
+  profiles[gen] = P
+  return P
+end
+
 return Proto

@@ -194,6 +194,7 @@ local function againstPeer(label, opts)
     lateBuf = opts.lateBuf, player = { name = "BLUE", id = 777 }, party = theirParty(),
     picks = { 0, 1, "stop" },       -- KADABRA, then the GOLEM it received, then CANCEL
     accepts = { true, true },
+    tamper = opts.tamper,
   })
   peer.evolve = evolveLast
   local peerMenu = peer.menu
@@ -310,6 +311,21 @@ againstPeer("python client, buffered", { python = true, mode = "buffered", seed 
 againstPeer("python client, buffered, BUF1 sent late",
             { python = true, mode = "buffered", lateBuf = true, expectNegotiation = true, seed = 11 })
 nativeToNative("this game on both ends", { seed = 4 })
+
+-- CHC1: choice, struct (44), OT (11), nickname (11).  Seen live on Gen 2:
+-- the Python client re-read its own cart over a slipping link and offered
+-- a mon whose OT and nickname were shifted, with $FE bytes in them.  The
+-- GOLEM it offers back in round 2 comes with its text mangled like that;
+-- the trade still lands our own GOLEM (the round 2 check above: OT RED).
+againstPeer("python client, sync, its offer's text mangled", {
+  python = true, seed = 21,
+  tamper = function(payload, iteration)
+    if iteration ~= 2 then return payload end
+    local function put(s, at, bytes) return s:sub(1, at) .. bytes .. s:sub(at + #bytes + 1) end
+    payload = put(payload, 1 + 44, "\0\0\145\132\131\254")
+    return put(payload, 1 + 44 + 11, "\0\0\0\0\0\134\142\254\139\132\140")
+  end,
+})
 
 Runtime.emit = realEmit
 print(failures == 0 and "gblink online: all passed" or ("gblink online: %d failures"):format(failures))

@@ -45,6 +45,9 @@ function FakeRelay:enqueue(item, lane)
   if lane.lastAt and at < lane.lastAt then at = lane.lastAt end
   lane.lastAt = at
   item.at = at
+  -- a socket keeps its order: ties in `at` go out in the order they were sent
+  self.seq = (self.seq or 0) + 1
+  item.seq = self.seq
   self.queue[#self.queue + 1] = item
 end
 
@@ -102,13 +105,14 @@ function FakeRelay:server(from, data)
   if not from.other then return end -- waiting: swallowed
   local msg = P.decode(data)
   if not msg then self.stats.dropped = self.stats.dropped + 1 return end
-  if msg.req == "G" and msg.kind == "VES1" then
-    self:toClient(from, { binary = P.send("VES1", P.VERSION) })
+  local T = P.T or { VES = "VES1", RAN = "RAN1" }
+  if msg.req == "G" and msg.kind == T.VES then
+    self:toClient(from, { binary = P.send(T.VES, P.VERSION) })
     return
-  elseif msg.req == "G" and msg.kind == "RAN1" then
+  elseif msg.req == "G" and msg.kind == T.RAN then
     local r = {}
     for i = 1, 10 do r[i] = math.random(0, 0xFC) end
-    self:toClient(from, { binary = P.send("RAN1", r) })
+    self:toClient(from, { binary = P.send(T.RAN, r) })
     return
   end
   self.stats.forwarded = self.stats.forwarded + 1
@@ -122,7 +126,10 @@ function FakeRelay:tick()
     if item.at <= t then due[#due + 1] = item else keep[#keep + 1] = item end
   end
   self.queue = keep
-  table.sort(due, function(a, b) return a.at < b.at end)
+  table.sort(due, function(a, b)
+    if a.at ~= b.at then return a.at < b.at end
+    return a.seq < b.seq
+  end)
   for _, item in ipairs(due) do
     if item.to == "server" then
       if not item.from.closed then self:server(item.from, item.data) end

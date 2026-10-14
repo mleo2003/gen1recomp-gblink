@@ -118,7 +118,9 @@ function Bridge:onLink(ev)
     self.link:cancel()
     self:push({ type = "bye" })
   elseif kind == "theirAccept" then
-    self:push({ type = "confirm", ok = ev.ok })
+    -- an offer we declined for not matching our copy (Link:accept) is a
+    -- "no" whatever they answered, so LinkState does not trade alone
+    self:push({ type = "confirm", ok = ev.ok and not self.link.cur.mismatch })
   elseif kind == "ended" then
     self:push({ type = "bye" })
   elseif kind == "error" then

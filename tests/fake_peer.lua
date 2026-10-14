@@ -452,7 +452,10 @@ function FakePeer:menu(round)
     if choice == P.STOP then
       self:sendCounter("CHC1", { P.STOP })
     else
-      self:sendCounter("CHC1", string.char(choice) .. single(self.gbParty, pick))
+      local payload = string.char(choice) .. single(self.gbParty, pick)
+      -- a client whose own copy of its party went wrong (opts.tamper)
+      if self.tamper then payload = self.tamper(payload, self.iteration) end
+      self:sendCounter("CHC1", payload)
     end
     local their = self:getCounterMessage("CHC1", 600)
     local theirChoice = their:byte(2)

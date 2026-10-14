@@ -7,6 +7,13 @@
 //       what left my party, what arrived, and whether the arrival is the
 //       other player's mon with its trainer, DVs, stat exp, EXP, moves and
 //       nickname intact (species may differ only by a trade evolution)
+//   savecheck trades <mine_before.sav> <mine_after.sav> <theirs_before.sav> <rounds>
+//       several trades in a row, Gen 2 rules: <rounds> is "m/t,m/t,..", the
+//       1-based party slots each side gave in each round.  Both parties are
+//       replayed the way the cart files a trade (the given mon leaves, the
+//       rest close up, the arrival goes on the end and trade-evolves there:
+//       Everstone blocks, a required item is consumed), and every slot of
+//       mine_after is checked against that replay
 //
 // Exit code 0 when every check passes, 1 otherwise.
 using PKHeX.Core;
@@ -24,8 +31,11 @@ static class Program
         }
         if (args.Length == 4 && args[0] == "trade")
             return Trade(args[1], args[2], args[3]);
+        if (args.Length == 5 && args[0] == "trades")
+            return Trades(args[1], args[2], args[3], args[4]);
         Console.Error.WriteLine("usage: savecheck show <file.sav>...");
         Console.Error.WriteLine("       savecheck trade <mine_before.sav> <mine_after.sav> <theirs_before.sav>");
+        Console.Error.WriteLine("       savecheck trades <mine_before.sav> <mine_after.sav> <theirs_before.sav> <m/t,m/t,...>");
         return 2;
     }
 
@@ -189,6 +199,122 @@ static class Program
             Check(got.Stat_HPCurrent <= got.Stat_HPMax && got.Stat_HPCurrent > 0, $"HP {got.Stat_HPCurrent}/{got.Stat_HPMax}");
             var la = new LegalityAnalysis(got);
             Check(la.Valid, "PKHeX legality: " + (la.Valid ? "legal" : la.Report().Replace(Environment.NewLine, " | ")));
+        }
+
+        var bb = Boxed(before).Select(x => Key(x.pk)).ToList();
+        var ba = Boxed(after).Select(x => Key(x.pk)).ToList();
+        Check(bb.SequenceEqual(ba), $"PC boxes unchanged ({bb.Count} mons)");
+        Console.WriteLine(failures == 0 ? "PASS" : $"FAIL ({failures})");
+        return failures == 0 ? 0 : 1;
+    }
+
+    // Gen 2 trade evolutions (data/pokemon/evos_attacks.asm): into, and the
+    // held item the row demands (0 = any trade); the item is consumed
+    static readonly Dictionary<Species, (Species into, int item)> TradeEvolutions2 = new()
+    {
+        [Species.Kadabra] = (Species.Alakazam, 0), [Species.Machoke] = (Species.Machamp, 0),
+        [Species.Graveler] = (Species.Golem, 0), [Species.Haunter] = (Species.Gengar, 0),
+        [Species.Onix] = (Species.Steelix, 0x8F), [Species.Scyther] = (Species.Scizor, 0x8F),
+        [Species.Poliwhirl] = (Species.Politoed, 0x52), [Species.Slowpoke] = (Species.Slowking, 0x52),
+        [Species.Seadra] = (Species.Kingdra, 0x97), [Species.Porygon] = (Species.Porygon2, 0xAC),
+    };
+    const int Everstone = 0x70;
+
+    // one mon in the replay: the record it started as, what it should be now
+    sealed record Expect(GBPKM Src, ushort Species, int Item, bool Moved, bool Evolved);
+
+    static Expect Arrive(Expect e)
+    {
+        ushort species = e.Species;
+        int item = e.Item;
+        bool evolved = e.Evolved;
+        if (!e.Src.IsEgg && item != Everstone
+            && TradeEvolutions2.TryGetValue((Species)species, out var evo) && (evo.item == 0 || evo.item == item))
+        {
+            species = (ushort)evo.into;
+            evolved = true;
+            if (evo.item != 0) item = 0;
+        }
+        return new Expect(e.Src, species, item, true, evolved);
+    }
+
+    static int Trades(string mineBefore, string mineAfter, string theirsBefore, string rounds)
+    {
+        var before = Load(mineBefore);
+        var after = Load(mineAfter);
+        var theirs = Load(theirsBefore);
+        Console.WriteLine($"== trades check for {before.OT}/{before.TID16:D5}, partner {theirs.OT}/{theirs.TID16:D5}, rounds {rounds}");
+        Check(after.OT == before.OT && after.TID16 == before.TID16, "trainer name and ID unchanged");
+
+        var mine = Party(before).Select(pk => new Expect(pk, pk.Species, pk.HeldItem, false, false)).ToList();
+        var other = Party(theirs).Select(pk => new Expect(pk, pk.Species, pk.HeldItem, false, false)).ToList();
+        int r = 0;
+        foreach (var spec in rounds.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            r++;
+            var parts = spec.Split('/');
+            int m = int.Parse(parts[0]) - 1, t = int.Parse(parts[1]) - 1;
+            if (m < 0 || m >= mine.Count || t < 0 || t >= other.Count)
+            {
+                Fail($"round {r}: slot {spec} is outside the parties ({mine.Count}/{other.Count})");
+                return 1;
+            }
+            var gave = mine[m];
+            var got = other[t];
+            mine.RemoveAt(m);
+            other.RemoveAt(t);
+            var arrived = Arrive(got);
+            mine.Add(arrived);
+            other.Add(Arrive(gave));
+            var evolvedNote = arrived.Species != got.Species ? $", which evolves into {Name(arrived.Species)}" : "";
+            Console.WriteLine($"   round {r}: gave {Name(gave.Species)} (slot {m + 1}), received {Name(got.Species)} (their slot {t + 1}){evolvedNote}");
+        }
+
+        var pa = Party(after);
+        Check(pa.Count == mine.Count, $"party size {pa.Count} (the replay says {mine.Count})");
+        for (int i = 0; i < Math.Min(pa.Count, mine.Count); i++)
+        {
+            var got = pa[i];
+            var e = mine[i];
+            var src = e.Src;
+            var label = $"slot {i + 1}";
+            Check(Key(got) == Key(src),
+                  $"{label}: {Name(got.Species)} is {src.OriginalTrainerName}'s {Name(src.Species)} (trainer, DVs, EXP and stat exp match)");
+            if (!e.Moved)
+            {
+                Check(got.Data.SequenceEqual(src.Data), $"{label}: never traded, unchanged byte for byte");
+                continue;
+            }
+            Console.WriteLine($"   {label} arrived: {Describe(got)}");
+            Check(got.Species == e.Species,
+                  e.Evolved ? $"{label}: {Name(src.Species)} trade-evolved into {Name(got.Species)} (expected {Name(e.Species)})"
+                            : $"{label}: species kept ({Name(got.Species)}, expected {Name(e.Species)})");
+            Check(got.HeldItem == e.Item,
+                  e.Item != src.HeldItem ? $"{label}: held item 0x{src.HeldItem:X2} consumed by the evolution (now 0x{got.HeldItem:X2})"
+                                         : $"{label}: held item 0x{got.HeldItem:X2} kept (expected 0x{e.Item:X2})");
+            Check(got.OriginalTrainerName == src.OriginalTrainerName && got.TID16 == src.TID16,
+                  $"{label}: OT {got.OriginalTrainerName}/{got.TID16:D5} kept");
+            Check(got.CurrentLevel == src.CurrentLevel, $"{label}: level {got.CurrentLevel} kept");
+            ushort[] gm = [got.Move1, got.Move2, got.Move3, got.Move4];
+            ushort[] sm = [src.Move1, src.Move2, src.Move3, src.Move4];
+            int[] gp = [got.Move1_PP, got.Move2_PP, got.Move3_PP, got.Move4_PP];
+            int[] sp = [src.Move1_PP, src.Move2_PP, src.Move3_PP, src.Move4_PP];
+            bool movesOk = true;
+            for (int k = 0; k < 4; k++)
+                if (sm[k] != 0 && (gm[k] != sm[k] || gp[k] != sp[k])) movesOk = false;
+                else if (sm[k] == 0 && gm[k] != 0 && !e.Evolved) movesOk = false;
+            Check(movesOk, e.Evolved ? $"{label}: moves kept, new ones only in free slots ({Moves(got)})"
+                                     : $"{label}: moves kept ({Moves(got)})");
+            Check(got.IsNicknamed == src.IsNicknamed && (!src.IsNicknamed || got.Nickname == src.Nickname),
+                  src.IsNicknamed ? $"{label}: nickname \"{got.Nickname}\" kept" : $"{label}: no nickname, named {got.Nickname}");
+            if (got is PK2 g2 && src is PK2 s2)
+                Check(g2.CurrentFriendship == s2.CurrentFriendship && g2.PokerusState == s2.PokerusState
+                      && g2.CaughtData == s2.CaughtData,
+                      $"{label}: happiness {g2.CurrentFriendship}, pokerus and caught data kept");
+            Check(got.Stat_HPCurrent <= got.Stat_HPMax && (got.Stat_HPCurrent > 0 || src.Stat_HPCurrent == 0),
+                  $"{label}: HP {got.Stat_HPCurrent}/{got.Stat_HPMax}");
+            var la = new LegalityAnalysis(got);
+            Check(la.Valid, $"{label}: PKHeX legality: " + (la.Valid ? "legal" : la.Report().Replace(Environment.NewLine, " | ")));
         }
 
         var bb = Boxed(before).Select(x => Key(x.pk)).ToList();

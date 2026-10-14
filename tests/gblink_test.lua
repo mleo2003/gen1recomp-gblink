@@ -63,9 +63,20 @@ opened:update()
 T.eq(opened.stage, "code", "GB-LINK ONLINE asks for a room number")
 presses = { "up", "right", "up", "up" }
 for _ = 1, 4 do opened:update() end
+-- no luasocket (the headless loader, or a build without it): the mod still
+-- loads and says so.  Hidden here so the check holds with luasocket installed.
+local hiddenSocket, hiddenSearchers = package.loaded.socket, package.loaders
+package.loaded.socket = nil
+package.loaders = { function(name)
+  if name == "socket" then return "\n\tno socket (hidden by the test)" end
+  for _, f in ipairs(hiddenSearchers) do
+    local r = f(name)
+    if type(r) == "function" then return r end
+  end
+end }
 presses = { "a" }
 opened:update()
--- the headless loader has no luasocket: the mod still loads and says so
+package.loaded.socket, package.loaders = hiddenSocket, hiddenSearchers
 T.eq(opened.stage, "message", "with no network library it explains instead of crashing")
 
 -- ------- a received mon keeps its cart catch rate
